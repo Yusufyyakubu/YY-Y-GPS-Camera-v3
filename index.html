@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#12202b">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>YY&Y GPS Camera v3</title>
+<style>
+:root{--ink:#12202b;--paper:#f3f5f2;--yellow:#f2c230;--steel:#5b7083;--line:#2c3f4e;--bad:#e5674f;--ok:#58c28a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--ink);color:var(--paper);font:16px/1.4 system-ui,Segoe UI,Roboto,sans-serif}
+body{display:flex;flex-direction:column;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line)}
+header h1{font-size:1.05rem;margin:0;font-weight:700;letter-spacing:.2px}
+nav{display:flex;gap:6px}
+nav button{background:none;border:1px solid var(--line);color:var(--paper);padding:6px 12px;border-radius:8px;font:inherit}
+nav button.on{background:var(--yellow);color:var(--ink);border-color:var(--yellow);font-weight:700}
+main{flex:1;overflow:auto;display:flex;flex-direction:column}
+.view{display:none;flex:1;flex-direction:column}
+.view.on{display:flex}
+#gps{display:flex;gap:14px;flex-wrap:wrap;padding:8px 14px;font-variant-numeric:tabular-nums;font-size:.95rem;background:#0d1821}
+#gps b{color:var(--yellow);font-weight:600}
+#gps .acc.good{color:var(--ok)} #gps .acc.poor{color:var(--bad)}
+.cam{position:relative;background:#000;flex:1;min-height:220px}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam .msg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:#cbd5dc}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 14px 0}
+.form input,.form select,.form textarea{width:100%;background:#0d1821;color:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit}
+.form .full{grid-column:1/-1}
+.catrow{grid-column:1/-1;display:flex;gap:8px}.catrow select{flex:1}.catrow .btn{padding:8px 12px}
+.form textarea{resize:none;height:44px}
+.shoot{display:flex;align-items:center;justify-content:center;gap:16px;padding:12px 14px 14px}
+#snap{width:76px;height:76px;border-radius:50%;border:5px solid var(--paper);background:var(--yellow);box-shadow:0 0 0 3px var(--ink) inset}
+#snap:disabled{background:var(--steel);opacity:.6}
+#snap:active:not(:disabled){transform:scale(.94)}
+.hint{font-size:.85rem;color:#9fb0bd;text-align:center;padding:0 14px 8px}
+.bar{display:flex;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);align-items:center}
+.bar span{flex:1;color:#9fb0bd}
+.btn{background:var(--yellow);color:var(--ink);border:0;border-radius:8px;padding:9px 14px;font:inherit;font-weight:700}
+.btn.ghost{background:none;color:var(--paper);border:1px solid var(--line);font-weight:500}
+.rec{display:flex;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.rec img{width:76px;height:96px;object-fit:cover;border-radius:6px;background:#000}
+.rec .t{flex:1;min-width:0;font-size:.9rem}
+.rec .t strong{display:block;font-size:1rem}
+.rec .t small{color:#9fb0bd;display:block;overflow-wrap:anywhere}
+.rec .a{display:flex;flex-direction:column;gap:6px}
+.empty{padding:40px 24px;text-align:center;color:#9fb0bd}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--paper);color:var(--ink);padding:10px 16px;border-radius:10px;font-weight:600;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--yellow);outline-offset:2px}
+header{flex-wrap:wrap;gap:8px}nav{flex-wrap:wrap}.bar{flex-wrap:wrap}#mapFrame{width:100%;height:55vh;min-height:300px;border:0;background:#243b4b}.mapcontrols{padding:14px;display:grid;gap:10px}.mapcontrols select,.mapcontrols input{padding:10px;width:100%;font:inherit}.mapcontrols a{color:#f2c230}</style>
+</head>
+<body>
+<header>
+  <h1><img src="icon-192.png" alt="YY&amp;Y" style="width:36px;vertical-align:middle;margin-right:6px">YY&amp;Y GPS Camera</h1>
+  <nav><button id="tCam" class="on">Camera</button><button id="tMap">Map</button><button id="tRec">Records <span id="cnt">0</span></button></nav>
+</header>
+<main>
+  <section id="vCam" class="view on">
+    <div id="gps"><span>Lat <b id="lat">--</b></span><span>Lon <b id="lon">--</b></span><span>Accuracy <b id="acc" class="acc">--</b></span></div>
+    <div class="cam"><video id="vid" playsinline muted autoplay></video><div id="camMsg" class="msg">Starting camera…</div></div>
+    <div class="form">
+      <div class="catrow"><select id="cat" aria-label="User-created tag"></select><button id="addCat" class="btn ghost" aria-label="Add category">+ Add tag</button><button id="delCat" class="btn ghost" aria-label="Remove selected category">Remove</button></div>
+      <input id="name" class="full" placeholder="Photo name (numbered automatically if empty)" aria-label="Photo name">
+      <textarea id="notes" class="full" placeholder="Field notes" aria-label="Field notes"></textarea>
+    </div>
+    <div class="shoot"><button id="snap" aria-label="Capture photo" disabled></button></div>
+    <div id="hint" class="hint">Waiting for a GPS fix…</div>
+  </section>
+  <section id="vRec" class="view">
+    <div class="bar"><span id="sum"></span><button id="csv" class="btn">Export CSV</button><button id="geojson" class="btn">GeoJSON</button></div>
+    <div id="list"></div>
+  </section>
+<section id="vMap" class="view">
+<div class="mapcontrols">
+<label>Basemap<select id="provider"><option value="osm">OpenStreetMap</option><option value="google">Google Maps</option></select></label>
+<label>Map location<select id="mapLocation"><option value="live">Current GPS location</option></select></label>
+<button id="refreshMap" class="btn">Refresh / centre map</button>
+<details><summary>Google Maps setup</summary><p>Enter a browser-restricted Maps Embed API key. It is saved on this device, not kept secret. Restrict it to your website and Maps Embed API in Google Cloud.</p><input id="googleKey" type="password" autocomplete="off" placeholder="Maps Embed API key"><button id="saveKey" class="btn">Save key</button></details>
+<div id="mapStatus" role="status"></div><a id="externalMap" target="_blank" rel="noopener noreferrer">Open selected location in map</a>
+</div><iframe id="mapFrame" title="Selected location basemap" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+<p class="hint">Maps require internet and send the selected coordinates to the chosen provider. One selected location is shown at a time. Photos and field notes are not sent.</p>
+</section></main>
+<div id="toast"></div>
+<canvas id="cv" hidden></canvas>
+<script>
+const $=id=>document.getElementById(id);
+const APP='YY&Y GPS Camera';
+let pos=null, stream=null;
+
+/* ---------- storage (IndexedDB) ---------- */
+const DB=new Promise((res,rej)=>{const r=indexedDB.open('yyy-gps-camera',1);
+  r.onupgradeneeded=()=>r.result.createObjectStore('rec',{keyPath:'id',autoIncrement:true});
+  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);});
+const tx=async(mode,fn)=>{const db=await DB;return new Promise((res,rej)=>{const t=db.transaction('rec',mode);const out=fn(t.objectStore('rec'));t.oncomplete=()=>res(out.result);t.onerror=()=>rej(t.error);});};
+const addRec=r=>tx('readwrite',s=>s.add(r));
+const allRec=()=>tx('readonly',s=>s.getAll());
+const delRec=id=>tx('readwrite',s=>s.delete(id));
+
+/* ---------- helpers ---------- */
+const toast=m=>{const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);};
+const pad=n=>String(n).padStart(2,'0');
+const stamp=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+const safe=s=>s.replace(/[^\w\-]+/g,'_');
+const download=(blob,name)=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);};
+
+/* ---------- categories (created by the user) ---------- */
+const loadCats=()=>{try{return JSON.parse(localStorage.getItem('yyy-cats')||'[]')}catch(e){return []}};
+const saveCats=a=>{try{localStorage.setItem('yyy-cats',JSON.stringify(a))}catch(e){}};
+function drawCats(sel){
+  const cats=loadCats(), s=$('cat'); s.innerHTML='';
+  const none=document.createElement('option'); none.value=''; none.textContent=cats.length?'No category':'No categories yet - tap + Add'; s.appendChild(none);
+  cats.forEach(c=>{const o=document.createElement('option');o.value=o.textContent=c;s.appendChild(o);});
+  s.value=cats.includes(sel)?sel:'';
+}
+$('addCat').onclick=()=>{
+  const n=(prompt('Create your own tag / category name')||'').trim().slice(0,40); if(!n) return;
+  const cats=loadCats(); if(!cats.some(c=>c.toLowerCase()===n.toLowerCase())) cats.push(n);
+  saveCats(cats); drawCats(cats.find(c=>c.toLowerCase()===n.toLowerCase()));
+};
+$('delCat').onclick=()=>{
+  const c=$('cat').value; if(!c) return toast('Select a category to remove');
+  if(confirm('Remove category "'+c+'"? Saved photos keep their category.')){saveCats(loadCats().filter(x=>x!==c));drawCats('');}
+};
+
+/* ---------- tabs ---------- */
+function show(tab){
+  $('vMap').classList.toggle('on',tab==='map'); $('tMap').classList.toggle('on',tab==='map'); if(tab==='map') loadMapLocations();
+  $('vCam').classList.toggle('on',tab==='cam'); $('vRec').classList.toggle('on',tab==='rec');
+  $('tCam').classList.toggle('on',tab==='cam'); $('tRec').classList.toggle('on',tab==='rec');
+  if(tab==='rec') render();
+}
+$('tMap').onclick=()=>show('map'); $('tCam').onclick=()=>show('cam'); $('tRec').onclick=()=>show('rec');
+
+/* ---------- GPS ---------- */
+function startGPS(){
+  if(!navigator.geolocation){$('hint').textContent='This device has no GPS support.';return;}
+  navigator.geolocation.watchPosition(p=>{
+    pos=p.coords;
+    $('lat').textContent=pos.latitude.toFixed(6);
+    $('lon').textContent=pos.longitude.toFixed(6);
+    const a=$('acc'); a.textContent='±'+Math.round(pos.accuracy)+' m';
+    a.className='acc '+(pos.accuracy<=10?'good':pos.accuracy>30?'poor':'');
+    $('hint').textContent=pos.accuracy>30?'Accuracy is weak. Move to open sky and wait before capturing.':'GPS ready.';
+    $('snap').disabled=!stream;
+  },e=>{$('hint').textContent='Location error: '+e.message+'. Allow location access and turn on GPS.';},
+  {enableHighAccuracy:true,maximumAge:0,timeout:30000});
+}
+
+/* ---------- camera ---------- */
+async function startCam(){
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}},audio:false});
+    $('vid').srcObject=stream; $('camMsg').style.display='none';
+    if(pos) $('snap').disabled=false;
+  }catch(e){$('camMsg').textContent='Camera unavailable: '+e.message+'. Allow camera access and reload.';}
+}
+
+/* ---------- capture + stamp ---------- */
+async function nextName(cat){
+  const recs=await allRec();
+  const n=recs.filter(r=>(r.category||'')===cat).length+1;
+  return `${cat||'Photo'}-${pad(n)}`;
+}
+$('snap').onclick=async()=>{
+  if(!pos||!stream) return;
+  const v=$('vid'); if(!v.videoWidth) return;
+  const cat=$('cat').value;
+  const name=$('name').value.trim()||await nextName(cat);
+  const now=new Date(), when=stamp(now), uid=crypto.randomUUID();
+  const snap={lat:pos.latitude,lon:pos.longitude,acc:pos.accuracy};
+  const c=$('cv'); c.width=v.videoWidth; c.height=v.videoHeight;
+  const g=c.getContext('2d'); g.drawImage(v,0,0);
+  const lines=[APP,`Name: ${name}`,...(cat?[`Category: ${cat}`]:[]),`Latitude: ${snap.lat.toFixed(6)}`,`Longitude: ${snap.lon.toFixed(6)}`,`Accuracy: ±${snap.acc.toFixed(1)} m`,`Date / Time: ${when}`];
+  const fs=Math.max(16,Math.round(c.width*0.034)), lh=Math.round(fs*1.35), padd=Math.round(fs*.6);
+  const h=lines.length*lh+padd*2;
+  g.fillStyle='rgba(18,32,43,.78)'; g.fillRect(0,c.height-h,c.width,h);
+  g.fillStyle='#f2c230'; g.fillRect(0,c.height-h,Math.round(fs*.3),h);
+  g.textBaseline='top';
+  lines.forEach((t,i)=>{g.font=(i===0?'700 ':'500 ')+fs+'px system-ui,Arial,sans-serif';g.fillStyle=i===0?'#f2c230':'#fff';g.fillText(t,padd+Math.round(fs*.3),c.height-h+padd+i*lh);});
+  const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',0.9));
+  await addRec({uid,time_utc:now.toISOString(),name,category:cat,notes:$('notes').value.trim(),lat:snap.lat,lon:snap.lon,acc:snap.acc,time:when,file:`${safe(name)}_${uid}.jpg`,photo:blob});
+  $('name').value=''; $('notes').value='';
+  if(navigator.vibrate) navigator.vibrate(40);
+  toast('Saved '+name); count();
+};
+
+/* ---------- records ---------- */
+async function count(){$('cnt').textContent=(await allRec()).length;}
+async function render(){
+  const recs=(await allRec()).reverse(); const L=$('list'); L.innerHTML='';
+  $('sum').textContent=recs.length+' record'+(recs.length===1?'':'s');
+  if(!recs.length){L.innerHTML='<div class="empty">No records yet. Capture a photo and it will appear here.</div>';return;}
+  for(const r of recs){
+    const d=document.createElement('div'); d.className='rec';
+    const url=URL.createObjectURL(r.photo);
+    d.innerHTML=`<img src="${url}" alt=""><div class="t"><strong></strong><small></small><small></small></div><div class="a"><button class="btn ghost">Photo</button><button class="btn ghost">Delete</button></div>`;
+    d.querySelector('strong').textContent=r.category?`${r.name} (${r.category})`:r.name;
+    const sm=d.querySelectorAll('small');
+    sm[0].textContent=`${r.lat.toFixed(6)}, ${r.lon.toFixed(6)}  ±${r.acc.toFixed(1)} m  ${r.time}`;
+    sm[1].textContent=r.notes||'';
+    const [b1,b2]=d.querySelectorAll('button');
+    b1.onclick=()=>download(r.photo,r.file);
+    b2.onclick=async()=>{if(confirm('Delete '+r.name+'?')){await delRec(r.id);render();count();}};
+    L.appendChild(d);
+  }
+}
+$('csv').onclick=async()=>{
+  const recs=await allRec(); if(!recs.length){toast('Nothing to export');return;}
+  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const rows=[['id','name','category','latitude','longitude','accuracy_m','datetime','notes','photo_file']];
+  recs.forEach(r=>rows.push([r.id,r.name,r.category,r.lat.toFixed(7),r.lon.toFixed(7),r.acc.toFixed(1),r.time,r.notes,r.file]));
+  const text='\ufeff'+rows.map(r=>r.map(q).join(',')).join('\r\n');
+  download(new Blob([text],{type:'text/csv;charset=utf-8'}),'YYY_GPS_Camera_'+stamp(new Date()).replace(/[: ]/g,'-')+'.csv');
+};
+
+
+/* GeoJSON uses longitude, latitude order; JPEGs remain separate downloads. */
+function toGeoJSON(recs){return {type:'FeatureCollection',features:recs.map(r=>({type:'Feature',id:r.uid||r.id,geometry:{type:'Point',coordinates:[r.lon,r.lat]},properties:{id:r.id,uid:r.uid||null,name:r.name,category:r.category||'',notes:r.notes||'',accuracy_m:r.acc,datetime:r.time,datetime_utc:r.time_utc||null,photo_file:r.file}}))};}
+$('geojson').onclick=async()=>{try{const recs=await allRec();if(!recs.length)return toast('Nothing to export');download(new Blob([JSON.stringify(toGeoJSON(recs),null,2)],{type:'application/geo+json'}),'YYY_GPS_Camera_'+Date.now()+'.geojson');}catch(e){toast('Export failed: '+e.message);}};
+let mappedRecords=[];
+$('googleKey').value=localStorage.getItem('yyy-google-embed-key')||'';
+$('saveKey').onclick=()=>{try{localStorage.setItem('yyy-google-embed-key',$('googleKey').value.trim());toast('Map key saved on this device');updateMap();}catch(e){toast('Could not save key');}};
+async function loadMapLocations(){
+ const selected=$('mapLocation').value; mappedRecords=await allRec();
+ $('mapLocation').replaceChildren(new Option('Current GPS location','live'));
+ mappedRecords.forEach(r=>$('mapLocation').add(new Option(r.name+' — '+(r.category||'No tag'),String(r.id))));
+ if([...$('mapLocation').options].some(o=>o.value===selected))$('mapLocation').value=selected;
+ updateMap();
+}
+function updateMap(){
+ const selected=$('mapLocation').value;
+ const r=selected==='live'?(pos?{lat:pos.latitude,lon:pos.longitude}:null):mappedRecords.find(r=>String(r.id)===selected);
+ const frame=$('mapFrame'),status=$('mapStatus'),link=$('externalMap');
+ frame.hidden=true;link.hidden=true;frame.removeAttribute('src');
+ if(!r){status.textContent='Waiting for GPS. Allow location access, or select a saved record.';return;}
+ const lat=r.lat,lon=r.lon,google=$('provider').value==='google';
+ link.href=google?'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(lat+','+lon):'https://www.openstreetmap.org/?mlat='+lat+'&mlon='+lon+'#map=17/'+lat+'/'+lon;
+ link.hidden=false;
+ if(!navigator.onLine){status.textContent='You are offline. Basemaps need internet. Local capture and exports remain available.';return;}
+ if(google){const key=$('googleKey').value.trim();if(!key){status.textContent='Add your Maps Embed API key in Google Maps setup, or use the external map link.';return;}
+ frame.src='https://www.google.com/maps/embed/v1/place?key='+encodeURIComponent(key)+'&q='+encodeURIComponent(lat+','+lon)+'&zoom=17';
+ }else{const d=.006;const bbox=[Math.max(-180,lon-d),Math.max(-85,lat-d),Math.min(180,lon+d),Math.min(85,lat+d)];frame.src='https://www.openstreetmap.org/export/embed.html?bbox='+encodeURIComponent(bbox.join(','))+'&layer=mapnik&marker='+encodeURIComponent(lat+','+lon);}
+ frame.hidden=false;status.textContent=(google?'Google Maps':'OpenStreetMap')+' — '+lat.toFixed(6)+', '+lon.toFixed(6)+'. Pan/zoom inside the map. Refresh to recenter.';
+}
+$('provider').onchange=updateMap;$('mapLocation').onchange=updateMap;$('refreshMap').onclick=loadMapLocations;
+window.addEventListener('online',()=>{if($('vMap').classList.contains('on'))updateMap();});
+window.addEventListener('offline',()=>{if($('vMap').classList.contains('on'))updateMap();});
+
+/* ---------- boot ---------- */
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+drawCats(''); startGPS(); startCam(); count();
+</script>
+</body>
+</html>
